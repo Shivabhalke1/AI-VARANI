@@ -1,0 +1,27 @@
+cat > frontend/components/header.html << 'EOF'
+<div class="header">
+    <div class="header-content">
+        <div class="logo">
+            <div class="logo-icon">🚨</div>
+            <div class="logo-text">
+                <h1>AI VARANI</h1>
+                <p>Autonomous Incident Response System</p>
+            </div>
+        </div>
+        <div class="header-stats">
+            <div class="stat-badge">
+                <span class="stat-label">Status:</span>
+                <span class="stat-value" id="systemStatus">Initializing...</span>
+            </div>
+            <div class="stat-badge">
+                <span class="stat-label">Step:</span>
+                <span class="stat-value" id="stepCount">0</span>
+            </div>
+            <div class="stat-badge">
+                <span class="stat-label">Reward:</span>
+                <span class="stat-value" id="totalReward">0.00</span>
+            </div>
+        </div>
+    </div>
+</div>
+EOF

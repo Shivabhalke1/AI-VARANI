@@ -1,0 +1,27 @@
+cat > frontend/components/metrics_panel.html << 'EOF'
+<div class="metrics-panel">
+    <h3>📊 Global Metrics</h3>
+    <div id="metricsGrid" class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">Avg Error Rate</div>
+            <div class="metric-value" id="avgErrorRate">0%</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Avg Latency</div>
+            <div class="metric-value" id="avgLatency">0ms</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Total Throughput</div>
+            <div class="metric-value" id="totalThroughput">0 req/s</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Degraded Services</div>
+            <div class="metric-value" id="degradedCount">0</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Failed Services</div>
+            <div class="metric-value" id="failedCount">0</div>
+        </div>
+    </div>
+</div>
+EOF

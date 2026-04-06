@@ -1,0 +1,22 @@
+# Incident Scenarios
+scenarios:
+  database_slowdown:
+    name: "Database Connection Pool Exhaustion"
+    severity: "high"
+    root_cause:
+      service: "database"
+      issue: "pool_exhaustion"
+    affected_services:
+      - "database"
+      - "user_service"
+      - "payment_service"
+
+  auth_crash:
+    name: "Auth Service Memory Leak"
+    severity: "critical"
+    root_cause:
+      service: "auth_service"
+      issue: "oom_leak"
+    affected_services:
+      - "auth_service"
+      - "api_gateway"

@@ -1,0 +1,46 @@
+# Environment Configuration for AI VARANI
+environment:
+  name: "IncidentResponseEnv"
+  version: "1.0.0"
+  max_steps: 50
+  seed: 42
+
+services:
+  - name: "api_gateway"
+    display_name: "API Gateway"
+    critical: true
+    dependencies: []
+  - name: "auth_service"
+    display_name: "Auth Service"
+    critical: true
+    dependencies: ["api_gateway"]
+  - name: "user_service"
+    display_name: "User Service"
+    critical: false
+    dependencies: ["api_gateway", "auth_service"]
+  - name: "payment_service"
+    display_name: "Payment Service"
+    critical: true
+    dependencies: ["api_gateway", "auth_service", "user_service"]
+  - name: "database"
+    display_name: "Database"
+    critical: true
+    dependencies: ["user_service", "payment_service"]
+
+reward:
+  correct_diagnosis: 50.0
+  correct_mitigation: 100.0
+  step_penalty: -1.0
+  resolution_bonus: 200.0
+  wrong_action: -20.0
+  quick_resolution_bonus: 50.0
+
+actions:
+  types:
+    - "inspect_logs"
+    - "inspect_metrics"
+    - "restart_service"
+    - "mark_resolved"
+
+observations:
+  max_log_entries: 10
