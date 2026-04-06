@@ -1,0 +1,20 @@
+spec_version: 1
+name: ai-varani
+type: custom
+runtime: python
+# This tells the grader to find your 'demo' object inside 'app.py'
+app: app:demo
+port: 7860
+sdk: gradio
+
+# These tasks MUST match the IDs the grader expects
+tasks:
+  - id: incident-response-db
+    type: custom
+    grading_metric: reward
+  - id: incident-response-memory
+    type: custom
+    grading_metric: reward
+  - id: incident-response-network
+    type: custom
+    grading_metric: reward

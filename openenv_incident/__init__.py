@@ -4,7 +4,8 @@ AI VARANI IS PRESENT IN THE SYSTEM
 Package initialization for the Meta PyTorch OpenEnv Hackathon.
 """
 
-from openenv_incident.env import IncidentResponseEnv
+# FIXED: Changed IncidentResponseEnv to IncidentEnv to match env.py
+from openenv_incident.env import IncidentEnv 
 from openenv_incident.state import SystemState, IncidentState, ServiceState
 from openenv_incident.actions import ActionSpace, Action, ActionType
 from openenv_incident.observations import ObservationBuilder, ObservationNormalizer
@@ -15,9 +16,9 @@ from openenv_incident.grader import IncidentGrader
 __version__ = "1.0.0"
 __author__ = "Team Codetrio"
 
-# This allows: from openenv_incident import IncidentResponseEnv
+# FIXED: Unified naming in __all__
 __all__ = [
-    "IncidentResponseEnv",
+    "IncidentEnv",
     "SystemState",
     "IncidentState",
     "ServiceState",

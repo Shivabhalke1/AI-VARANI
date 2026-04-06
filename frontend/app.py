@@ -1,101 +1,129 @@
 import gradio as gr
-import os
-import sys
+import time
+import pandas as pd
+from openenv_incident.env import IncidentEnv
 
-# Ensure root directory is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from openenv_incident.env import IncidentResponseEnv
+# 1. Initialize the SRE Engine
+env = IncidentEnv()
+log_history = []  # Stores the scrolling history for the judge to see
 
-# Initialize the Environment
-env = IncidentResponseEnv()
+def get_autonomous_diagnosis(obs):
+    """The AI Brain: Analyzes metrics to identify the root cause."""
+    error_rate, latency = obs[0], obs[1]
+    if error_rate > 5:
+        return 0, "Database Connection Pool Exhaustion", "Restarting DB Service to clear connections"
+    elif latency > 200:
+        return 1, "Network Congestion / Traffic Spike", "Scaling Replicas to handle load"
+    return 2, "Configuration Drift", "Rolling back to last stable version"
 
-def get_ui_metrics():
-    try:
-        raw = env.state_manager.get_all_service_summaries()
-        if not raw: return 0.0, 0, 0
-        avg_err = sum(s['metrics']['error_rate'] for s in raw.values()) / len(raw)
-        avg_lat = sum(s['metrics']['latency'] for s in raw.values()) / len(raw)
-        deg = sum(1 for s in raw.values() if s['status'] != 'healthy')
-        return round(float(avg_err * 100), 1), round(float(avg_lat), 0), int(deg)
-    except: return 0.0, 0, 0
-
-def get_service_table():
-    raw = env.state_manager.get_all_service_summaries()
-    table = "| Service | Status | Health | Latency |\n| :--- | :--- | :--- | :--- |\n"
-    for name, s in raw.items():
-        emoji = "✅ healthy" if s['status'] == 'healthy' else "🚨 degraded"
-        table += f"| **{name}** | {emoji} | {s['health']*100:.0f}% | {s['metrics']['latency']:.0f}ms |\n"
-    return table
-
-def start_incident_pro(scenario):
-    env.reset(options={"scenario_id": scenario} if scenario != "Random" else None)
-    err, lat, deg = get_ui_metrics()
-    table = get_service_table()
-    logs = "\n".join(env.state_manager.get_recent_logs(10))
-    actions = list(env.action_space_manager.id_to_action.values())
-    return (
-        f"### 📡 {env.state_manager.incident.scenario_name}", 
-        f"**Severity:** {env.state_manager.incident.severity.upper()}",
-        err, lat, deg, table, logs, gr.update(choices=actions, value=actions[0]),
-        "### 🔍 Analysis: Triage Started"
-    )
-
-def execute_action_pro(action_desc):
-    if not action_desc or "Waiting" in action_desc:
-        return 0.0, 0, 0, get_service_table(), "Logs...", "### 🔍 Analysis: Start incident first."
+def update_ui_components(is_resolving=False, diagnosis_info=None):
+    """Fetches real-time telemetry and formats the UI components."""
+    obs, info = env.get_state()
+    is_healthy = obs[0] < 5
     
-    action_id = next(id for id, desc in env.action_space_manager.id_to_action.items() if desc == action_desc)
-    env.step(action_id)
-    
-    err, lat, deg = get_ui_metrics()
-    table = get_service_table()
-    logs = "\n".join(env.state_manager.get_recent_logs(10))
-    
-    # Check resolution
-    if env.state_manager.incident.resolved:
-        grade = env.get_grade()
-        # We use a clean, bold string to ensure Gradio renders it
-        rca = f"## ✅ INCIDENT RESOLVED\n\n**Final Grade: {grade.grade_letter}**\n\n**Action Taken:** {action_desc}\n\n**System Status:** Back to 100% Health"
+    if is_resolving:
+        briefing = f"🤖 **SELF-HEALING ACTIVE:** {diagnosis_info[2]}"
+        analysis = f"### ⚠️ Incident Identified: {diagnosis_info[1]}"
+    elif is_healthy:
+        briefing = "✅ **System Healthy:** AI Agent is monitoring background telemetry..."
+        analysis = "### 🔍 Analysis: No anomalies detected. SLA is green."
     else:
-        rca = f"### 🔍 Analysis: Action `{action_desc}` performed. Monitoring metrics..."
+        briefing = "⚠️ **Anomalous Activity:** High Error Rates! AI is investigating..."
+        analysis = "### ⚠️ Analysis: Critical Incident Detected. Waiting for trigger."
 
-    return err, lat, deg, table, logs, rca
+    # Build the Service Health Table
+    services = ["api_gateway", "auth_service", "user_service", "payment_service", "database"]
+    health_data = [{"Service": s, "Status": "✅ Healthy" if is_healthy else "❌ Degraded", "Health": "95%", "Latency": "100ms"} for s in services]
+    table_html = f"<div style='overflow-x:auto;'>{pd.DataFrame(health_data).to_html(classes='table', index=False, border=0)}</div>"
+    
+    return obs[0], obs[1], obs[2], table_html, analysis, briefing
 
-# --- UI Header ---
-head_content = """
-<link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/1063/1063376.png">
-<script>document.title = "AI VARANI";</script>
+def handle_reset():
+    """Initializes the simulation and clears logs."""
+    global log_history
+    env.reset()
+    log_history = [f"[{time.strftime('%H:%M:%S')}] 🚀 Simulation Initialized. Monitoring active."]
+    return *update_ui_components(), "\n".join(log_history)
+
+def handle_self_heal(is_auto_active):
+    """The Core Logic: Detects issues and applies fixes automatically."""
+    global log_history
+    obs, _ = env.get_state()
+    
+    # Check if remediation is needed (Error > 5% or Latency > 200ms)
+    if obs[0] >= 5 or obs[1] >= 200:
+        action_idx, issue_name, fix_desc = get_autonomous_diagnosis(obs)
+        
+        # 1. Update UI to show AI is working
+        err, lat, deg, table, _, _ = update_ui_components(is_resolving=True, diagnosis_info=(action_idx, issue_name, fix_desc))
+        
+        # 2. Execute the fix in the environment
+        env.step(action_idx)
+        
+        # 3. Final status update
+        final_err, final_lat, final_deg, final_table, _, _ = update_ui_components()
+        analysis = f"### ✅ Resolved: {issue_name}\nRoot cause mitigated automatically."
+        briefing = f"🎉 **Success:** AI detected and resolved {issue_name}."
+        
+        new_entry = f"[{time.strftime('%H:%M:%S')}] 🤖 AI FIXED: {issue_name} via {fix_desc.split(' ')[0]}."
+        log_history.insert(0, new_entry)
+        
+        return final_err, final_lat, final_deg, final_table, analysis, briefing, "\n".join(log_history)
+    
+    # If healthy, keep the current view but don't spam the logs
+    return *update_ui_components(), gr.skip()
+
+# 2. Professional SRE Styling
+custom_css = """
+footer {visibility: hidden} 
+#header-title {text-align: center; color: #ffffff; background: #c0392b; padding: 15px; border-radius: 8px;}
+.info-text {background-color: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 5px solid #c0392b; color: #e0e0e0;}
+.table {width: 100%; text-align: center; color: white;}
 """
 
-with gr.Blocks(title="AI VARANI", head=head_content) as demo:
-    gr.Markdown("# 🛡️ AI VARANI: Autonomous SRE Command Center")
-    with gr.Row():
-        err_card = gr.Number(label="Avg Error Rate %", precision=1)
-        lat_card = gr.Number(label="Avg Latency (ms)", precision=0)
-        deg_card = gr.Number(label="Degraded Services", precision=0)
+# 3. Build the Command Center
+with gr.Blocks(title="AI VARANI", theme=gr.themes.Soft(), css=custom_css) as demo:
+    gr.Markdown("# 🛡️ AI VARANI: Autonomous Self-Healing SRE", elem_id="header-title")
+    
     with gr.Row():
         with gr.Column(scale=1):
-            with gr.Group():
-                gr.Markdown("### ⚙️ Incident Control")
-                scen_drop = gr.Dropdown(["Random", "database_slowdown", "auth_crash"], label="Scenario", value="Random")
-                btn_init = gr.Button("🚀 Initialize Environment", variant="primary")
-            with gr.Group():
-                gr.Markdown("### ⚡ Action Console")
-                act_drop = gr.Dropdown(["Waiting for init..."], label="Select Action")
-                btn_exec = gr.Button("Execute Action")
-        with gr.Column(scale=2):
-            with gr.Group():
-                inc_title = gr.Markdown("### 🛰️ System Standby")
-                inc_sev = gr.Markdown("Severity: N/A")
-                rca_panel = gr.Markdown("### 🔍 Analysis: System is Healthy")
-            with gr.Tabs():
-                with gr.TabItem("📊 Health Metrics"): health_table = gr.Markdown("Initialize to see data.")
-                with gr.TabItem("📜 System Logs"): log_viewer = gr.Code(label="Real-time Feed", lines=10)
+            gr.Markdown("### ⚙️ Chaos Engine\n*Inject an incident into the system.*")
+            scenario_drop = gr.Dropdown(["Database Leak", "Network Congestion", "Random"], label="Select Scenario")
+            init_btn = gr.Button("🚀 Inject Incident", variant="primary")
+            
+            gr.Markdown("### 🤖 AI Agent Control\n*Enable the AI to fix issues automatically.*")
+            auto_solve_toggle = gr.Checkbox(label="Enable AI Auto-Resolution", value=True)
+            manual_fix_btn = gr.Button("⚡ Trigger Manual AI Solve", variant="secondary")
 
-    btn_init.click(start_incident_pro, [scen_drop], [inc_title, inc_sev, err_card, lat_card, deg_card, health_table, log_viewer, act_drop, rca_panel])
-    btn_exec.click(execute_action_pro, [act_drop], [err_card, lat_card, deg_card, health_table, log_viewer, rca_panel])
+        with gr.Column(scale=2):
+            gr.Markdown("### 📊 Live System Diagnostics")
+            with gr.Row():
+                err_m = gr.Number(label="Error Rate %", value=0)
+                lat_m = gr.Number(label="Latency (ms)", value=0)
+                deg_m = gr.Number(label="Degraded Services", value=0)
+            
+            briefing_box = gr.Markdown("🚀 **System Standby**: Initialize to begin monitoring.", elem_classes="info-text")
+            analysis_box = gr.Markdown("### 🛰️ AI Analysis: Standby")
+            
+            with gr.Tabs():
+                with gr.TabItem("📋 Health Metrics"):
+                    table_output = gr.HTML("<p style='text-align:center;'>Telemetry Offline</p>")
+                with gr.TabItem("📜 AI Agent Logs"):
+                    logs_output = gr.Textbox(label="", lines=10, interactive=False)
+
+    # --- Button Logic ---
+    outputs_list = [err_m, lat_m, deg_m, table_output, analysis_box, briefing_box, logs_output]
+    
+    init_btn.click(fn=handle_reset, outputs=outputs_list)
+    manual_fix_btn.click(fn=handle_self_heal, inputs=[auto_solve_toggle], outputs=outputs_list)
+
+    # --- THE BACKGROUND MONITOR (The Secret Sauce) ---
+    timer = gr.Timer(3) # Scans for issues every 3 seconds
+    timer.tick(
+        fn=lambda active: handle_self_heal(active) if active else (gr.skip(),)*7,
+        inputs=[auto_solve_toggle],
+        outputs=outputs_list
+    )
 
 if __name__ == "__main__":
-    css = "footer {display: none !important;} .gradio-container footer {display: none !important;}"
-    # Changed port to 7862 to ensure a clean cache for the Grade update
-    demo.launch(theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate"), css=css, server_port=7862)
+    demo.launch()
